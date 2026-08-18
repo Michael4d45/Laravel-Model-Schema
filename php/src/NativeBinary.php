@@ -265,7 +265,7 @@ class NativeBinary
             $ok = curl_exec($ch);
             $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
-            curl_close($ch);
+            unset($ch);
             fclose($fh);
             if ($ok === false || $status >= 400) {
                 @unlink($destination);
