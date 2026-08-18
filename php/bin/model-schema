@@ -1,0 +1,38 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use LaravelModelSchema\NativeBinary;
+
+$autoloadCandidates = [];
+if (isset($GLOBALS['_composer_autoload_path']) && is_string($GLOBALS['_composer_autoload_path'])) {
+    $autoloadCandidates[] = $GLOBALS['_composer_autoload_path'];
+}
+$autoloadCandidates[] = dirname(__DIR__, 4) . '/autoload.php';
+$autoloadCandidates[] = dirname(__DIR__, 2) . '/vendor/autoload.php';
+
+$loaded = false;
+foreach ($autoloadCandidates as $autoload) {
+    if ($autoload !== '' && is_file($autoload)) {
+        require $autoload;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "Error: Composer autoloader not found. Run 'composer install' first.\n");
+    exit(1);
+}
+
+try {
+    $packageRoot = dirname(__DIR__, 2);
+    $binary = NativeBinary::resolve($packageRoot);
+    $args = $_SERVER['argv'] ?? [];
+    array_shift($args);
+    NativeBinary::execute($binary, $args);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    exit(1);
+}

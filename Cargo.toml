@@ -1,0 +1,28 @@
+[package]
+name = "laravel-model-schema"
+version = "0.1.0"
+edition = "2021"
+description = "Report drift between Laravel migrations, Eloquent models, and Filament forms"
+license = "MIT"
+
+[[bin]]
+name = "model-schema"
+path = "src/main.rs"
+
+[dependencies]
+mago-allocator = "=1.46.0"
+mago-database = "=1.46.0"
+mago-docblock = "=1.42.0"
+mago-names = "=1.46.0"
+mago-span = "=1.46.0"
+mago-syntax = "=1.46.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+walkdir = "2"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"

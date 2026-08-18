@@ -1,0 +1,52 @@
+{
+    "name": "michael4d45/laravel-model-schema",
+    "description": "Native CLI that reports drift between Laravel migrations, Eloquent models, and Filament forms",
+    "type": "library",
+    "license": "MIT",
+    "version": "0.1.0",
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "filament",
+        "migrations",
+        "schema"
+    ],
+    "authors": [
+        {
+            "name": "Michael",
+            "email": "michael4d45@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/Michael4d45/laravel-model-schema",
+    "support": {
+        "issues": "https://github.com/Michael4d45/laravel-model-schema/issues",
+        "source": "https://github.com/Michael4d45/laravel-model-schema"
+    },
+    "suggest": {
+        "ext-curl": "Faster GitHub release downloads for vendor/bin/model-schema"
+    },
+    "require": {
+        "php": "^8.3",
+        "composer-runtime-api": "^2.2"
+    },
+    "bin": [
+        "php/bin/model-schema"
+    ],
+    "autoload": {
+        "psr-4": {
+            "LaravelModelSchema\\": "php/src/"
+        }
+    },
+    "archive": {
+        "exclude": [
+            "/src",
+            "/tests",
+            "/fixtures",
+            "/target",
+            "/.github",
+            "/Cargo.toml",
+            "/Cargo.lock",
+            "/MAGO.md"
+        ]
+    }
+}

@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+.idea
+.vscode
+vendor/
+composer.lock
+.phpunit.result.cache
+.mago.cache
+# Cached GitHub release extracts (php/bin/<version>/...)
+/php/bin/[0-9]*/

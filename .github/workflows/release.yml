@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  crate_metadata:
+    name: Crate metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - id: meta
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="laravel-model-schema") | .version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Cargo version ${VERSION} (git tag ${GITHUB_REF_NAME})"
+
+  build:
+    name: ${{ matrix.job.target }}
+    needs: crate_metadata
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, musl: false }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, musl: true }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm, musl: false }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, musl: true }
+          - { target: aarch64-apple-darwin, os: macos-latest, musl: false }
+          - { target: x86_64-apple-darwin, os: macos-latest, musl: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
+      - name: Install musl toolchain
+        if: matrix.job.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --locked --release --target ${{ matrix.job.target }}
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${{ needs.crate_metadata.outputs.version }}"
+          TARGET="${{ matrix.job.target }}"
+          STAGING="model-schema-${VERSION}-${TARGET}"
+          mkdir -p "${STAGING}"
+          cp "target/${TARGET}/release/model-schema" "${STAGING}/"
+          cp README.md LICENSE "${STAGING}/" || true
+          chmod +x "${STAGING}/model-schema"
+          tar czf "${STAGING}.tar.gz" "${STAGING}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-schema-${{ needs.crate_metadata.outputs.version }}-${{ matrix.job.target }}.tar.gz
+          path: model-schema-${{ needs.crate_metadata.outputs.version }}-${{ matrix.job.target }}.tar.gz
+
+  release:
+    needs: [crate_metadata, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List assets
+        run: ls -l artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/model-schema-*.tar.gz
+          generate_release_notes: true
