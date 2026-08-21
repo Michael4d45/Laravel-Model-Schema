@@ -63,7 +63,7 @@ fn run(cli: Cli) -> laravel_model_schema::Result<()> {
             let (analysis, report) = analyze(&cfg, schema_json.as_deref())?;
             let full = serde_json::json!({
                 "report": report,
-                "resources": analysis.tables,
+                "tables": analysis.tables,
             });
             let output_path = output.unwrap_or_else(|| cfg.output_path.clone());
             if !json_only {

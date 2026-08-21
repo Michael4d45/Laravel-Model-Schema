@@ -26,8 +26,6 @@ use super::names::{
 use super::phpdoc::{class_doc_between, resolve_phpdoc_class};
 use super::uses::collect_use_map;
 
-const ELOQUENT_MODEL: &str = "Illuminate\\Database\\Eloquent\\Model";
-
 const RELATION_RETURNS: &[&str] = &[
     "BelongsTo",
     "HasMany",
@@ -82,13 +80,10 @@ pub fn parse_models(config: &Config, analysis: &mut crate::ir::Analysis) {
         parsed.iter().map(|c| (c.fqcn.clone(), c.clone())).collect();
 
     for class in parsed {
-        if !is_eloquent_model(&class, &by_fqcn) {
+        if !is_eloquent_model(&class, &by_fqcn, config) {
             continue;
         }
-        let table = class
-            .table
-            .clone()
-            .unwrap_or_else(|| guess_table_name(&class.fqcn));
+        let table = table_name_for(config, &class);
         let report = analysis.table_mut(&table);
         merge_model(report, &class);
         report.model_file = Some(class.file.clone());
@@ -160,27 +155,38 @@ fn is_probably_class(ty: &str) -> bool {
     ty.contains('\\') || ty.chars().next().is_some_and(|c| c.is_uppercase())
 }
 
-fn is_eloquent_model(class: &ParsedClass, by_fqcn: &HashMap<String, ParsedClass>) -> bool {
+fn table_name_for(config: &Config, class: &ParsedClass) -> String {
+    if let Some(table) = &class.table {
+        return table.clone();
+    }
+    if let Some(table) = config.table_default_for(&class.fqcn) {
+        return table;
+    }
+    if let Some(parent) = &class.parent {
+        if let Some(table) = config.table_default_for(parent) {
+            return table;
+        }
+    }
+    guess_table_name(&class.fqcn)
+}
+
+fn is_eloquent_model(
+    class: &ParsedClass,
+    by_fqcn: &HashMap<String, ParsedClass>,
+    config: &Config,
+) -> bool {
     let mut current = class.parent.as_deref();
     let mut seen = HashSet::new();
     while let Some(parent) = current {
         if !seen.insert(parent.to_string()) {
             break;
         }
-        if is_model_parent(parent) {
+        if config.is_model_parent(parent) {
             return true;
         }
         current = by_fqcn.get(parent).and_then(|c| c.parent.as_deref());
     }
     false
-}
-
-fn is_model_parent(parent: &str) -> bool {
-    parent == ELOQUENT_MODEL
-        || parent.ends_with("\\Database\\Eloquent\\Model")
-        || parent.ends_with("\\Foundation\\Auth\\User")
-        || short_name(parent) == "Model"
-        || short_name(parent) == "Authenticatable"
 }
 
 fn collect_php_files(paths: &[PathBuf]) -> Vec<PathBuf> {
@@ -373,6 +379,12 @@ fn apply_method(
     namespace: Option<&str>,
 ) {
     let name = owned_name(method.name.value).unwrap_or_default();
+    if name == "casts" {
+        if let Some(expr) = method_return_expr(method) {
+            parsed.casts = array_string_map(expr, resolved, namespace);
+        }
+        return;
+    }
     if let Some(rest) = name.strip_prefix("get") {
         if let Some(rest) = rest.strip_suffix("Attribute") {
             if !rest.is_empty() {
@@ -443,4 +455,18 @@ fn apply_method(
             model: related,
         });
     }
+}
+
+fn method_return_expr<'a>(method: &'a Method<'a>) -> Option<&'a Expression<'a>> {
+    let MethodBody::Concrete(body) = &method.body else {
+        return None;
+    };
+    for statement in body.statements.iter() {
+        if let Statement::Return(ret) = statement {
+            if let Some(value) = ret.value {
+                return Some(value);
+            }
+        }
+    }
+    None
 }

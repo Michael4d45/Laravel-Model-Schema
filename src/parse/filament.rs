@@ -19,8 +19,8 @@ use super::expr::{
 use super::names::{guess_table_name, owned_name, resolve_identifier, resolve_local, short_name};
 
 pub fn parse_filament(config: &Config, analysis: &mut crate::ir::Analysis) {
-    let files = collect_resource_files(&config.resource_paths);
-    let component_refs = normalize_components(&config.form_component_classes);
+    let files = collect_filament_files(&config.filament_paths);
+    let component_refs = normalize_components(&config.filament.component_classes);
 
     for resource_file in &files {
         let Some(model_fqcn) = resource_model_fqcn(resource_file) else {
@@ -47,7 +47,7 @@ fn table_for_model(analysis: &crate::ir::Analysis, model_fqcn: &str) -> String {
     guess_table_name(model_fqcn)
 }
 
-fn collect_resource_files(paths: &[PathBuf]) -> Vec<PathBuf> {
+fn collect_filament_files(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for root in paths {
         if root.is_file() {
@@ -216,12 +216,9 @@ fn collect_make(
     analysis: &mut crate::ir::Analysis,
 ) {
     let names = method_chain_names(expr);
-    let required = names.iter().any(|n| {
-        config
-            .resource_component_required_methods
-            .iter()
-            .any(|r| r == n)
-    });
+    let required = names
+        .iter()
+        .any(|n| config.filament.required_methods.iter().any(|r| r == n));
     let Some(call) = innermost_call(expr).or(match expr {
         Expression::Call(c) => Some(c),
         _ => None,
@@ -247,7 +244,7 @@ fn collect_make(
             || fqcn.ends_with(&format!("\\{c}"))
             || c.ends_with(&format!("\\{short}"))
     });
-    if !known && !fqcn.contains("Filament\\Forms\\Components") {
+    if !known && !config.in_filament_component_namespace(&fqcn) {
         return;
     }
     let Some(field_name) = first_arg_string(call) else {
@@ -273,10 +270,11 @@ fn collect_make(
 
 fn infer_type(config: &Config, fqcn: &str, short: &str) -> String {
     config
-        .resource_component_type_map
+        .filament
+        .component_types
         .get(fqcn)
-        .or_else(|| config.resource_component_type_map.get(&format!("\\{fqcn}")))
-        .or_else(|| config.resource_component_type_map.get(short))
+        .or_else(|| config.filament.component_types.get(&format!("\\{fqcn}")))
+        .or_else(|| config.filament.component_types.get(short))
         .cloned()
         .unwrap_or_else(|| "string".into())
 }

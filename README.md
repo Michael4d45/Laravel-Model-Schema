@@ -37,7 +37,30 @@ v1 is report-only. Automatic `--fix` flags are not included yet.
 
 ## Configuration
 
-Copy `model-schema.example.toml` to the project root as `model-schema.toml`.
+Copy `model-schema.example.toml` to the project root as `model-schema.toml`. Every key is optional: file values overlay Laravel defaults (lists and maps merge; `ignore.defaults = false` replaces built-in ignores).
+
+```toml
+[ignore]
+tables = ["telescope_entries"]
+
+[ignore.models]
+fields = ["uuid"]
+
+[unignore]
+tables = ["jobs"]
+
+[[ignore.rules]]
+tables = ["users"]
+fields = ["remember_token"]
+checks = ["filament"]
+```
+
+- `[ignore]` / `[ignore.filament|models|phpdoc]` skip tables or fields
+- `[unignore]` re-enables a default skip
+- `[[ignore.rules]]` scopes a field to specific tables and checks
+- `[checks]` can turn off `filament`, `models`, or `phpdoc` entirely
+- `[models]`, `[filament]`, `[migrations]`, and `*_mappings` extend parser vocabulary
+
 
 ## Releases
 

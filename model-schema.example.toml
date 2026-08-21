@@ -1,24 +1,79 @@
+# Copy to model-schema.toml. Omitted keys keep Laravel defaults and merge with
+# any lists or maps you add. Set ignore.defaults = false to start from scratch.
+
 model_paths = ["app/Models"]
-resource_paths = ["app/Filament/Resources"]
+filament_paths = ["app/Filament/Resources"]
 migration_paths = ["database/migrations"]
 output_path = "reports/model_schema_report.json"
 
-[ignored_tables]
-failed_jobs = ["resources", "models", "phpdoc"]
-jobs = ["resources", "models", "phpdoc"]
-migrations = ["resources", "models", "phpdoc"]
-personal_access_tokens = ["resources", "models", "phpdoc"]
-password_resets = ["resources", "models", "phpdoc"]
-password_reset_tokens = ["resources", "models", "phpdoc"]
-sessions = ["resources", "models", "phpdoc"]
-cache = ["resources", "models", "phpdoc"]
-cache_locks = ["resources", "models", "phpdoc"]
-job_batches = ["resources", "models", "phpdoc"]
-activity_log = ["resources", "models", "phpdoc"]
-webhooks = ["resources", "models", "phpdoc"]
+[checks]
+filament = true
+models = true
+phpdoc = true
 
-[ignored_fields]
-id = ["models"]
-created_at = ["models"]
-updated_at = ["models"]
-deleted_at = ["models"]
+# Global skips apply to every check. Per-check tables/fields add to that set.
+# Built-in table ignores: failed_jobs, jobs, migrations, personal_access_tokens,
+# password_resets, password_reset_tokens, sessions, cache, cache_locks,
+# job_batches, activity_log, webhooks.
+[ignore]
+# defaults = true
+# tables = ["telescope_entries"]
+# fields = ["password"]
+
+[ignore.models]
+# Fillable/model-field check only. Built-in: id, created_at, updated_at, deleted_at.
+# fields = ["uuid"]
+
+[ignore.filament]
+# fields = ["remember_token"]
+
+[ignore.phpdoc]
+# fields = ["id"]
+
+# Re-enable something the defaults (or ignore lists) would skip.
+# [unignore]
+# tables = ["jobs"]
+#
+# [unignore.models]
+# fields = ["id"]
+
+# Table + field + check rules. Empty tables = all tables; empty checks = all checks.
+# [[ignore.rules]]
+# tables = ["users"]
+# fields = ["remember_token"]
+# checks = ["filament"]
+
+# Extra Eloquent bases and table names when $table is omitted.
+# [models]
+# parents = ["App\\Models\\BaseModel"]
+# replace_parents = false
+#
+# [models.table_defaults]
+# DatabaseNotification = "notifications"
+
+# Blueprint shorthand. Keys merge over defaults (id → id, timestamps, morphs, …).
+# [migrations.default_column_names]
+# uuid = "uuid"
+#
+# [migrations.column_macros]
+# timestamps = { columns = ["created_at", "updated_at"], type = "Carbon", nullable = true }
+#
+# [migrations.morph_macros]
+# morphs = { id_type = "int", nullable = false }
+
+# [type_normalizations]
+# Point = "Clickbar\\Magellan\\Data\\Geometries\\Point"
+#
+# [cast_type_mappings]
+# datetime = "Illuminate\\Support\\Carbon"
+#
+# [column_type_mappings]
+# geography = "Point"
+#
+# [filament]
+# component_namespaces = ["Filament\\Forms\\Components"]
+# component_classes = ["Filament\\Forms\\Components\\TextInput"]
+# required_methods = ["required"]
+#
+# [filament.component_types]
+# "Filament\\Forms\\Components\\TextInput" = "string"

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::config::Check;
 use crate::ir::{Analysis, Field, TableAnalysis};
 use crate::parse::{camel_case, short_name};
 use crate::Config;
@@ -68,22 +69,16 @@ pub struct MorphToInfo {
 }
 
 pub fn generate_report(config: &Config, analysis: &Analysis) -> Report {
-    let ignore_resources = config.ignored_for("resources");
-    let ignore_models = config.ignored_for("models");
-    let ignore_phpdoc = config.ignored_for("phpdoc");
-    let ignore_fields_resources = config.ignored_fields_for("resources");
-    let ignore_fields_models = config.ignored_fields_for("models");
-
     let mut report = Report::default();
 
     for (table, resource) in &analysis.tables {
-        if !ignore_resources.iter().any(|t| t == table) {
-            add_remove_filament(table, resource, &ignore_fields_resources, &mut report);
+        if config.check_enabled(Check::Filament) && !config.ignores_table(Check::Filament, table) {
+            add_remove_filament(config, table, resource, &mut report);
         }
-        if !ignore_models.iter().any(|t| t == table) {
-            add_remove_models(table, resource, &ignore_fields_models, &mut report);
+        if config.check_enabled(Check::Models) && !config.ignores_table(Check::Models, table) {
+            add_remove_models(config, table, resource, &mut report);
         }
-        if !ignore_phpdoc.iter().any(|t| t == table) {
+        if config.check_enabled(Check::Phpdoc) && !config.ignores_table(Check::Phpdoc, table) {
             phpdoc_sections(config, table, resource, &mut report);
         }
     }
@@ -92,14 +87,14 @@ pub fn generate_report(config: &Config, analysis: &Analysis) -> Report {
 }
 
 fn add_remove_filament(
+    config: &Config,
     table: &str,
     resource: &TableAnalysis,
-    ignore_fields: &[String],
     report: &mut Report,
 ) {
     let mut to_add = BTreeMap::new();
     for (name, field) in &resource.migration_fields {
-        if ignore_fields.iter().any(|f| f == name) {
+        if config.ignores_field(Check::Filament, table, name) {
             continue;
         }
         if resource.filament_form_fields.contains_key(name) {
@@ -115,7 +110,7 @@ fn add_remove_filament(
 
     let mut to_remove = BTreeMap::new();
     for (name, field) in &resource.filament_form_fields {
-        if ignore_fields.iter().any(|f| f == name) {
+        if config.ignores_field(Check::Filament, table, name) {
             continue;
         }
         if resource.migration_fields.contains_key(name) {
@@ -134,17 +129,15 @@ fn add_remove_filament(
     }
 }
 
-fn add_remove_models(
-    table: &str,
-    resource: &TableAnalysis,
-    ignore_fields: &[String],
-    report: &mut Report,
-) {
+fn add_remove_models(config: &Config, table: &str, resource: &TableAnalysis, report: &mut Report) {
     let mut to_add = BTreeMap::new();
     for (name, field) in &resource.migration_fields {
+        if config.ignores_field(Check::Models, table, name) {
+            continue;
+        }
         let has_model =
             resource.model_fields.contains_key(name) || resource.phpdoc_fields.contains_key(name);
-        if has_model || ignore_fields.iter().any(|f| f == name) {
+        if has_model {
             continue;
         }
         to_add.insert(name.clone(), field.clone());
@@ -156,6 +149,9 @@ fn add_remove_models(
     let mut to_remove = BTreeMap::new();
     for (name, field) in &resource.model_fields {
         if field.accessor {
+            continue;
+        }
+        if config.ignores_field(Check::Models, table, name) {
             continue;
         }
         if resource.migration_fields.contains_key(name) {
@@ -176,7 +172,7 @@ fn add_remove_models(
             .insert(table.into(), to_remove);
     }
 
-    if resource.model_fields.is_empty() {
+    if resource.model_fqcn.is_none() {
         report.add_models.push(table.into());
     }
 }
@@ -184,6 +180,9 @@ fn add_remove_models(
 fn phpdoc_sections(config: &Config, table: &str, resource: &TableAnalysis, report: &mut Report) {
     let mut add_docs = BTreeMap::new();
     for (name, field) in &resource.migration_fields {
+        if config.ignores_field(Check::Phpdoc, table, name) {
+            continue;
+        }
         if resource.phpdoc_fields.contains_key(name) {
             continue;
         }
@@ -197,6 +196,9 @@ fn phpdoc_sections(config: &Config, table: &str, resource: &TableAnalysis, repor
 
     let mut remove_docs = BTreeMap::new();
     for (name, phpdoc) in &resource.phpdoc_fields {
+        if config.ignores_field(Check::Phpdoc, table, name) {
+            continue;
+        }
         if resource.migration_fields.contains_key(name) {
             continue;
         }
@@ -217,12 +219,15 @@ fn phpdoc_sections(config: &Config, table: &str, resource: &TableAnalysis, repor
 
     let mut wrong = BTreeMap::new();
     for (name, phpdoc) in &resource.phpdoc_fields {
+        if config.ignores_field(Check::Phpdoc, table, name) {
+            continue;
+        }
         let Some(migration) = resource.migration_fields.get(name) else {
             continue;
         };
         let cast = resource.model_fields.get(name).and_then(|f| f.cast.clone());
         let expected_type = if let Some(cast) = &cast {
-            expected_phpdoc_from_cast(cast)
+            expected_phpdoc_from_cast(config, cast)
         } else {
             expected_phpdoc_from_migration(config, &migration.r#type)
         };
@@ -368,6 +373,9 @@ fn phpdoc_sections(config: &Config, table: &str, resource: &TableAnalysis, repor
 
     let mut conflicts = BTreeMap::new();
     for (name, phpdoc) in &resource.phpdoc_fields {
+        if config.ignores_field(Check::Phpdoc, table, name) {
+            continue;
+        }
         let Some(cast) = resource
             .model_fields
             .get(name)
@@ -376,7 +384,7 @@ fn phpdoc_sections(config: &Config, table: &str, resource: &TableAnalysis, repor
         else {
             continue;
         };
-        let expected = expected_phpdoc_from_cast(cast);
+        let expected = expected_phpdoc_from_cast(config, cast);
         let mut actual = phpdoc.r#type.clone();
         if expected == "array"
             && matches!(phpdoc.array_type.as_deref(), Some("array" | "Collection"))
@@ -412,33 +420,45 @@ fn expected_phpdoc_from_migration(config: &Config, migration_type: &str) -> Stri
         .unwrap_or_else(|| migration_type.to_string())
 }
 
-fn expected_phpdoc_from_cast(cast: &str) -> String {
-    let normalized = cast.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
+fn expected_phpdoc_from_cast(config: &Config, cast: &str) -> String {
+    let trimmed = cast.trim();
+    if trimmed.is_empty() {
         return "mixed".into();
     }
-    let (base, arg) = match normalized.split_once(':') {
-        Some((b, a)) => (b, Some(a)),
-        None => (normalized.as_str(), None),
-    };
-    if base == "encrypted" {
-        return match arg {
-            Some("array" | "json" | "collection") => "array".into(),
-            Some("object") => "object".into(),
-            _ => "string".into(),
-        };
+    if let Some(mapped) = lookup_cast(config, trimmed) {
+        return mapped;
     }
-    match base {
-        "datetime" | "immutable_datetime" | "timestamp" | "immutable_timestamp" => {
-            "Illuminate\\Support\\Carbon".into()
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some((base, arg)) = lower.split_once(':') {
+        if let Some(mapped) = lookup_cast(config, &lower) {
+            return mapped;
         }
-        "json" | "array" | "collection" => "array".into(),
-        "boolean" | "bool" => "bool".into(),
-        "integer" | "int" => "int".into(),
-        "real" | "float" | "double" | "decimal" => "float".into(),
-        "hashed" => "string".into(),
-        _ => cast.to_string(),
+        if let Some(mapped) = lookup_cast(config, base) {
+            if base != "encrypted" {
+                return mapped;
+            }
+        }
+        if base == "encrypted" {
+            return match arg {
+                "array" | "json" | "collection" => "array".into(),
+                "object" => "object".into(),
+                _ => lookup_cast(config, "encrypted").unwrap_or_else(|| "string".into()),
+            };
+        }
     }
+    if let Some(mapped) = lookup_cast(config, &lower) {
+        return mapped;
+    }
+    trimmed.to_string()
+}
+
+fn lookup_cast(config: &Config, key: &str) -> Option<String> {
+    config.cast_type_mappings.get(key).cloned().or_else(|| {
+        config
+            .cast_type_mappings
+            .get(&key.to_ascii_lowercase())
+            .cloned()
+    })
 }
 
 fn is_morph_to(relationship_type: &str) -> bool {
@@ -623,8 +643,7 @@ mod tests {
     #[test]
     fn ignores_configured_resource_fields() {
         let mut cfg = Config::default();
-        cfg.ignored_fields
-            .insert("remember_token".into(), vec!["resources".into()]);
+        cfg.ignore.filament.fields.push("remember_token".into());
         let resource = TableAnalysis {
             migration_fields: BTreeMap::from([
                 (
@@ -674,6 +693,94 @@ mod tests {
         assert!(!report.add_fields_to_filament_form["users"].contains_key("remember_token"));
         assert!(report.remove_fields_from_filament_form["users"].contains_key("legacy_field"));
         assert!(!report.remove_fields_from_filament_form["users"].contains_key("remember_token"));
+    }
+
+    #[test]
+    fn ignores_phpdoc_fields() {
+        let mut cfg = Config::default();
+        cfg.ignore.phpdoc.fields.push("id".into());
+        let resource = TableAnalysis {
+            migration_fields: BTreeMap::from([
+                (
+                    "id".into(),
+                    Field {
+                        name: "id".into(),
+                        r#type: "int".into(),
+                        nullable: false,
+                    },
+                ),
+                (
+                    "name".into(),
+                    Field {
+                        name: "name".into(),
+                        r#type: "string".into(),
+                        nullable: false,
+                    },
+                ),
+            ]),
+            phpdoc_fields: BTreeMap::from([(
+                "name".into(),
+                PhpDocField {
+                    name: "name".into(),
+                    r#type: "string".into(),
+                    nullable: false,
+                    ..Default::default()
+                },
+            )]),
+            model_fqcn: Some("App\\Models\\User".into()),
+            ..Default::default()
+        };
+        let report = generate_report(&cfg, &table(resource));
+        assert!(!report
+            .add_fields_to_model_docs
+            .get("t")
+            .is_some_and(|fields| fields.contains_key("id")));
+    }
+
+    #[test]
+    fn attached_model_is_not_reported_as_missing() {
+        let resource = TableAnalysis {
+            model_fqcn: Some("App\\Models\\Note".into()),
+            ..Default::default()
+        };
+        let report = generate_report(&Config::default(), &table(resource));
+        assert!(report.add_models.is_empty());
+    }
+
+    #[test]
+    fn enum_cast_matches_phpdoc() {
+        let resource = TableAnalysis {
+            migration_fields: BTreeMap::from([(
+                "role".into(),
+                Field {
+                    name: "role".into(),
+                    r#type: "string".into(),
+                    nullable: false,
+                },
+            )]),
+            model_fields: BTreeMap::from([(
+                "role".into(),
+                ModelField {
+                    name: "role".into(),
+                    cast: Some("App\\Enums\\Role".into()),
+                    ..Default::default()
+                },
+            )]),
+            phpdoc_fields: BTreeMap::from([(
+                "role".into(),
+                PhpDocField {
+                    name: "role".into(),
+                    r#type: "App\\Enums\\Role".into(),
+                    nullable: false,
+                    ..Default::default()
+                },
+            )]),
+            model_fqcn: Some("App\\Models\\User".into()),
+            ..Default::default()
+        };
+        let report = generate_report(&Config::default(), &table(resource));
+        assert!(report.wrong_model_doc_types.is_empty());
+        assert!(report.model_evidence_conflicts.is_empty());
     }
 
     #[test]

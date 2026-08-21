@@ -7,7 +7,7 @@ namespace Tests\Fixtures\Filament\Resources\Schemas;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 
-class SurveyorPostForm
+class PostForm
 {
     public static function configure(Schema $schema): Schema
     {

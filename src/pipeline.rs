@@ -20,7 +20,7 @@ pub fn check(
     };
     let full = serde_json::json!({
         "report": report,
-        "resources": analysis.tables,
+        "tables": analysis.tables,
     });
     Ok((full, stats))
 }

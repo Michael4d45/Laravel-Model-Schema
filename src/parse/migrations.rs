@@ -150,40 +150,44 @@ fn record_column(
         return;
     };
     let report = analysis.table_mut(table);
-    match method.as_str() {
-        "rememberToken" => {
+    if let Some(macro_) = config.migrations.column_macros.get(&method) {
+        for name in &macro_.columns {
             report.migration_fields.insert(
-                "remember_token".into(),
+                name.clone(),
                 Field {
-                    name: "remember_token".into(),
-                    r#type: "string".into(),
-                    nullable: true,
+                    name: name.clone(),
+                    r#type: macro_.r#type.clone(),
+                    nullable: macro_.nullable,
                 },
             );
         }
-        "timestamps" | "timestampsTz" => {
-            for name in ["created_at", "updated_at"] {
-                report.migration_fields.insert(
-                    name.into(),
-                    Field {
-                        name: name.into(),
-                        r#type: "Carbon".into(),
-                        nullable: true,
-                    },
-                );
-            }
-        }
-        "softDeletes" | "softDeletesTz" => {
-            report.migration_fields.insert(
-                "deleted_at".into(),
-                Field {
-                    name: "deleted_at".into(),
-                    r#type: "Carbon".into(),
-                    nullable: true,
-                },
-            );
-        }
-        _ => {}
+        return;
+    }
+    if let Some(morph) = config.migrations.morph_macros.get(&method) {
+        insert_morph_columns(report, expr, &method, &morph.id_type, morph.nullable);
+    }
+}
+
+fn insert_morph_columns(
+    report: &mut crate::ir::TableAnalysis,
+    expr: &Expression<'_>,
+    method: &str,
+    id_type: &str,
+    nullable: bool,
+) {
+    let Some(name) = first_string_arg_for_method(expr, method) else {
+        return;
+    };
+    for (suffix, r#type) in [("_type", "string"), ("_id", id_type)] {
+        let column = format!("{name}{suffix}");
+        report.migration_fields.insert(
+            column.clone(),
+            Field {
+                name: column,
+                r#type: r#type.into(),
+                nullable,
+            },
+        );
     }
 }
 
@@ -209,10 +213,30 @@ fn column_name_from_chain(config: &Config, expr: &Expression<'_>) -> Option<Stri
                         if let Some(col) = first_arg_string(&Call::Method(m.clone())) {
                             return Some(col);
                         }
+                        if let Some(col) = config.migrations.default_column_names.get(&name) {
+                            return Some(col.clone());
+                        }
                     }
                 }
                 current = m.object;
             }
+            Expression::Parenthesized(inner) => current = inner.expression,
+            _ => return None,
+        }
+    }
+}
+
+fn first_string_arg_for_method(expr: &Expression<'_>, method: &str) -> Option<String> {
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::Call(Call::Method(m)) => {
+                if selector_name(&m.method).as_deref() == Some(method) {
+                    return first_arg_string(&Call::Method(m.clone()));
+                }
+                current = m.object;
+            }
+            Expression::Call(Call::NullSafeMethod(m)) => current = m.object,
             Expression::Parenthesized(inner) => current = inner.expression,
             _ => return None,
         }
