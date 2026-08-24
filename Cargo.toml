@@ -1,6 +1,6 @@
 [package]
 name = "laravel-model-schema"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Report drift between Laravel migrations, Eloquent models, and Filament forms"
 license = "MIT"

@@ -125,3 +125,19 @@ fn parses_filament_form_fields() {
     assert!(!posts.filament_form_fields["title"].nullable);
     assert!(posts.filament_form_fields.contains_key("legacy_field"));
 }
+
+#[test]
+fn parses_fqcn_collection_property_read() {
+    let cfg = fixture_config();
+    let mut analysis = Analysis::default();
+    parse_models(&cfg, &mut analysis);
+
+    let accounts = analysis.tables.get("accounts").expect("accounts");
+    let balances = accounts
+        .phpdoc_read_fields
+        .get("balances")
+        .expect("balances @property-read");
+    assert_eq!(balances.r#type, "Tests\\Fixtures\\Models\\AccountBalance");
+    assert_eq!(balances.array_type.as_deref(), Some("Collection"));
+    assert_eq!(balances.key_type.as_deref(), Some("int"));
+}

@@ -101,45 +101,91 @@ pub(crate) fn parse_phpdoc_type(raw: &str) -> (String, bool, Option<String>, Opt
         .replace('?', "");
     ty = ty.trim().trim_start_matches('\\').to_string();
 
-    let mut array_type = None;
-    let mut key_type = None;
+    let (unwrapped, mut array_type, key_type) = unwrap_generic_collection_or_array(&ty);
+    ty = unwrapped;
 
-    if ty.starts_with("Collection<") && ty.ends_with('>') {
-        array_type = Some("Collection".into());
-        let inner = &ty[11..ty.len() - 1];
-        if let Some((key, rest)) = inner.split_once(',') {
-            key_type = Some(key.trim().to_string());
-            ty = rest.trim().trim_start_matches('\\').to_string();
-        } else {
-            ty = inner.trim().trim_start_matches('\\').to_string();
+    if array_type.is_none() {
+        if ty.starts_with("list<") && ty.ends_with('>') {
+            array_type = Some("array".into());
+            ty = ty[5..ty.len() - 1]
+                .trim()
+                .trim_start_matches('\\')
+                .to_string();
+        } else if ty.ends_with("[]") {
+            array_type = Some("array".into());
+            ty = ty[..ty.len() - 2]
+                .trim()
+                .trim_start_matches('\\')
+                .to_string();
         }
-    } else if ty.starts_with("array<") && ty.ends_with('>') {
-        array_type = Some("array".into());
-        let inner = &ty[6..ty.len() - 1];
-        if let Some((key, rest)) = inner.split_once(',') {
-            key_type = Some(key.trim().to_string());
-            ty = rest.trim().trim_start_matches('\\').to_string();
-        } else {
-            ty = inner.trim().trim_start_matches('\\').to_string();
-        }
-    } else if ty.starts_with("list<") && ty.ends_with('>') {
-        array_type = Some("array".into());
-        ty = ty[5..ty.len() - 1]
-            .trim()
-            .trim_start_matches('\\')
-            .to_string();
-    } else if ty.ends_with("[]") {
-        array_type = Some("array".into());
-        ty = ty[..ty.len() - 2]
-            .trim()
-            .trim_start_matches('\\')
-            .to_string();
     }
 
     if ty.is_empty() {
         ty = "mixed".into();
     }
     (ty, nullable, array_type, key_type)
+}
+
+fn unwrap_generic_collection_or_array(
+    ty: &str,
+) -> (String, Option<String>, Option<String>) {
+    let trimmed = ty.trim().trim_start_matches('\\');
+
+    for (wrapper, label) in [("Collection", "Collection"), ("array", "array")] {
+        let bare_prefix = format!("{wrapper}<");
+        if trimmed.starts_with(&bare_prefix) && trimmed.ends_with('>') {
+            return split_generic_inner(
+                &trimmed[bare_prefix.len()..trimmed.len() - 1],
+                label,
+            );
+        }
+
+        let suffix_needle = format!("{wrapper}<").to_ascii_lowercase();
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(idx) = lower.rfind(&suffix_needle) {
+            let generic = &trimmed[idx..];
+            if generic.ends_with('>') {
+                let inner = &generic[suffix_needle.len()..generic.len() - 1];
+                return split_generic_inner(inner, label);
+            }
+        }
+    }
+
+    (trimmed.to_string(), None, None)
+}
+
+fn split_generic_inner(
+    inner: &str,
+    array_label: &str,
+) -> (String, Option<String>, Option<String>) {
+    if let Some((key, rest)) = inner.split_once(',') {
+        (
+            rest.trim().trim_start_matches('\\').to_string(),
+            Some(array_label.into()),
+            Some(key.trim().to_string()),
+        )
+    } else {
+        (
+            inner.trim().trim_start_matches('\\').to_string(),
+            Some(array_label.into()),
+            None,
+        )
+    }
+}
+#[cfg(test)]
+mod parse_phpdoc_tests {
+    use super::parse_phpdoc_type;
+
+    #[test]
+    fn unwraps_fqcn_collection_generic() {
+        let (ty, nullable, array_type, key_type) = parse_phpdoc_type(
+            "\\Illuminate\\Database\\Eloquent\\Collection<int, \\App\\Models\\AccountBalance>",
+        );
+        assert!(!nullable);
+        assert_eq!(array_type.as_deref(), Some("Collection"));
+        assert_eq!(key_type.as_deref(), Some("int"));
+        assert_eq!(ty, "App\\Models\\AccountBalance");
+    }
 }
 pub(crate) fn resolve_phpdoc_class(
     ty: &str,

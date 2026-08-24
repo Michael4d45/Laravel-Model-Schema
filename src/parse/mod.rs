@@ -10,6 +10,7 @@ pub use filament::parse_filament;
 pub use migrations::parse_migrations;
 pub use models::parse_models;
 pub(crate) use names::{camel_case, short_name};
+pub(crate) use phpdoc::parse_phpdoc_type;
 
 use std::collections::BTreeMap;
 use std::path::Path;

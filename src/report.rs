@@ -486,55 +486,13 @@ fn suggested_property_read(expects_collection: bool, related: &str) -> String {
 }
 
 fn relationship_phpdoc_matches(phpdoc_type: &str, relationship_model: &str) -> bool {
-    let Some(from_doc) = extract_relationship_model(phpdoc_type) else {
+    let (inner, _, _, _) = crate::parse::parse_phpdoc_type(phpdoc_type);
+    if inner.is_empty() || inner == "mixed" {
         return false;
-    };
-    let from_doc = normalize_class(&from_doc);
+    }
+    let from_doc = normalize_class(&inner);
     let model = normalize_class(relationship_model);
     from_doc == model || short_name(&from_doc) == short_name(&model)
-}
-
-fn extract_relationship_model(phpdoc_type: &str) -> Option<String> {
-    let normalized = phpdoc_type.trim().trim_start_matches('\\');
-    if normalized.is_empty() {
-        return None;
-    }
-    if let Some(inner) = two_generic(normalized) {
-        return Some(inner);
-    }
-    if let Some(inner) = one_generic(normalized) {
-        return Some(inner);
-    }
-    if let Some(stripped) = normalized.strip_suffix("[]") {
-        return Some(stripped.to_string());
-    }
-    Some(normalized.to_string())
-}
-
-fn two_generic(ty: &str) -> Option<String> {
-    let lower = ty.to_ascii_lowercase();
-    for prefix in ["collection<", "array<"] {
-        if lower.starts_with(prefix) && ty.ends_with('>') {
-            let inner = &ty[prefix.len()..ty.len() - 1];
-            if let Some((_, rest)) = inner.split_once(',') {
-                return Some(rest.trim().to_string());
-            }
-        }
-    }
-    None
-}
-
-fn one_generic(ty: &str) -> Option<String> {
-    let lower = ty.to_ascii_lowercase();
-    for prefix in ["collection<", "array<"] {
-        if lower.starts_with(prefix) && ty.ends_with('>') {
-            let inner = &ty[prefix.len()..ty.len() - 1];
-            if !inner.contains(',') {
-                return Some(inner.trim().to_string());
-            }
-        }
-    }
-    None
 }
 
 pub fn actionable_report(report: &Report) -> Value {
@@ -863,6 +821,33 @@ mod tests {
     }
 
     #[test]
+    fn relationship_fqcn_collection_generic_matches() {
+        let resource = TableAnalysis {
+            phpdoc_read_fields: BTreeMap::from([(
+                "balances".into(),
+                PhpDocField {
+                    name: "balances".into(),
+                    r#type: "App\\Models\\AccountBalance".into(),
+                    nullable: false,
+                    array_type: Some("Collection".into()),
+                    key_type: Some("int".into()),
+                },
+            )]),
+            model_relationships: BTreeMap::from([(
+                "balances".into(),
+                Relationship {
+                    name: "balances".into(),
+                    r#type: "HasMany".into(),
+                    model: "App\\Models\\AccountBalance".into(),
+                },
+            )]),
+            ..Default::default()
+        };
+        let report = generate_report(&Config::default(), &table(resource));
+        assert!(report.wrong_relationship_phpdoc_read_types.is_empty());
+    }
+
+    #[test]
     fn decimal_and_encrypted_casts_match() {
         let resource = TableAnalysis {
             model_fields: BTreeMap::from([
@@ -1001,6 +986,32 @@ mod tests {
             "Protos\\Gps\\GpsPointBatch"
         );
         assert!(report.add_property_read["t"]["batch"].nullable);
+    }
+
+    #[test]
+    fn relationship_fqcn_collection_property_read_string_matches() {
+        let resource = TableAnalysis {
+            phpdoc_read_fields: BTreeMap::from([(
+                "balances".into(),
+                PhpDocField {
+                    name: "balances".into(),
+                    r#type: "\\Illuminate\\Database\\Eloquent\\Collection<int, \\App\\Models\\AccountBalance>".into(),
+                    nullable: false,
+                    ..Default::default()
+                },
+            )]),
+            model_relationships: BTreeMap::from([(
+                "balances".into(),
+                Relationship {
+                    name: "balances".into(),
+                    r#type: "HasMany".into(),
+                    model: "App\\Models\\AccountBalance".into(),
+                },
+            )]),
+            ..Default::default()
+        };
+        let report = generate_report(&Config::default(), &table(resource));
+        assert!(report.wrong_relationship_phpdoc_read_types.is_empty());
     }
 
     #[test]
