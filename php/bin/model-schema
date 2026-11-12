@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use LaravelModelSchema\LiveSchema;
 use LaravelModelSchema\NativeBinary;
 
 $autoloadCandidates = [];
@@ -31,6 +32,19 @@ try {
     $binary = NativeBinary::resolve($packageRoot);
     $args = $_SERVER['argv'] ?? [];
     array_shift($args);
+
+    // Prefer the live database over parsing migrations when the app is reachable.
+    if (LiveSchema::wanted($args)) {
+        try {
+            $live = LiveSchema::dump((string) getcwd());
+            $args[] = '--schema-json';
+            $args[] = $live['path'];
+            fwrite(STDERR, "Using live database schema ({$live['connection']}, {$live['tables']} tables). Pass --no-live to parse migrations instead.\n");
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Live database unavailable (' . $e->getMessage() . "); parsing migrations.\n");
+        }
+    }
+
     NativeBinary::execute($binary, $args);
 } catch (Throwable $e) {
     fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");

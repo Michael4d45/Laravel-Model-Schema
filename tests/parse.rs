@@ -141,3 +141,51 @@ fn parses_fqcn_collection_property_read() {
     assert_eq!(balances.array_type.as_deref(), Some("Collection"));
     assert_eq!(balances.key_type.as_deref(), Some("int"));
 }
+
+#[test]
+fn schema_json_maps_raw_database_types() {
+    use laravel_model_schema::parse::load_schema_json;
+    use std::io::Write;
+
+    let mut file = tempfile::NamedTempFile::new().expect("temp file");
+    write!(
+        file,
+        r#"{{
+            "posts": {{
+                "id": {{ "name": "id", "type": "bigint", "nullable": false }},
+                "title": {{ "name": "title", "type": "varchar", "nullable": false }},
+                "is_public": {{ "name": "is_public", "type": "tinyint(1)", "nullable": false }},
+                "rank": {{ "name": "rank", "type": "tinyint", "nullable": true }},
+                "published_at": {{ "name": "published_at", "type": "datetime", "nullable": true }},
+                "meta": {{ "name": "meta", "type": "JSON", "nullable": true }},
+                "location": {{ "name": "location", "type": "geography", "nullable": true }},
+                "created_at": {{ "name": "created_at", "type": "Carbon", "nullable": true }}
+            }}
+        }}"#
+    )
+    .expect("write schema");
+
+    let mut cfg = Config::default();
+    // Project overrides win over the built-in database names.
+    cfg.column_type_mappings
+        .insert("geography".into(), "Point".into());
+
+    let mut analysis = Analysis::default();
+    load_schema_json(file.path(), &cfg, &mut analysis).expect("load schema");
+    let fields = &analysis
+        .tables
+        .get("posts")
+        .expect("posts")
+        .migration_fields;
+    let type_of = |name: &str| fields.get(name).map(|f| f.r#type.as_str());
+
+    assert_eq!(type_of("id"), Some("int"));
+    assert_eq!(type_of("title"), Some("string"));
+    assert_eq!(type_of("is_public"), Some("bool"));
+    assert_eq!(type_of("rank"), Some("int"));
+    assert_eq!(type_of("published_at"), Some("Carbon"));
+    assert_eq!(type_of("meta"), Some("array"));
+    assert_eq!(type_of("location"), Some("Point"));
+    // Already-normalized dumps pass through untouched.
+    assert_eq!(type_of("created_at"), Some("Carbon"));
+}

@@ -31,7 +31,29 @@ vendor/bin/model-schema check --output reports/model_schema_report.json
 - `--config` / `-c` TOML or JSON config (defaults to `./model-schema.toml` when present)
 - `--output` JSON report path (default `reports/model_schema_report.json`)
 - `--json-only` print the actionable report JSON only
-- `--schema-json` optional live schema dump (skips migration parse)
+- `--schema-json` read columns from a schema dump instead of parsing migrations
+- `--no-live` skip the live database and parse migrations (handled by `vendor/bin/model-schema`)
+
+### Live database (default)
+
+When `vendor/bin/model-schema check` runs in a Laravel app whose database is reachable, the PHP wrapper boots the app, dumps the current connection's tables with `Schema::getColumns()`, and passes the dump to the binary as `--schema-json`. The live schema is the source of truth, so migrations that drop columns, add them in helper methods, or re-add them in `down()` can't skew the report.
+
+If there is no app or the database is unreachable (for example on CI without a database), it prints why and parses migrations instead. Opt out with `--no-live` or `MODEL_SCHEMA_LIVE=0`. Passing your own `--schema-json` also skips the live dump.
+
+### `--schema-json` format
+
+```json
+{
+  "users": {
+    "id": { "name": "id", "type": "bigint", "nullable": false },
+    "email": { "name": "email", "type": "varchar", "nullable": false },
+    "is_admin": { "name": "is_admin", "type": "tinyint(1)", "nullable": false },
+    "created_at": { "name": "created_at", "type": "timestamp", "nullable": true }
+  }
+}
+```
+
+`type` can be the raw database name (Laravel's `Schema::getColumns()` `type_name`, with `tinyint(1)` for MySQL booleans) or an already-normalized type (`int`, `string`, `bool`, `float`, `Carbon`, `array`, `resource`). Raw names go through your `column_type_mappings` first (case-insensitive), then the built-in database names; anything unrecognized is kept as-is.
 
 v1 is report-only. Automatic `--fix` flags are not included yet.
 

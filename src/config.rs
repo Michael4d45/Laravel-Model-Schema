@@ -302,7 +302,6 @@ fn default_column_type_mappings() -> BTreeMap<String, String> {
         ("rememberToken", "string"),
         ("binary", "resource"),
         ("bytea", "resource"),
-        ("tinyint", "bool"),
         ("bool", "bool"),
         ("boolean", "bool"),
         ("decimal", "float"),

@@ -30,7 +30,7 @@ pub fn analyze(config: &Config, schema_json: Option<&Path>) -> Result<(Analysis,
     parse_models(config, &mut analysis);
     parse_filament(config, &mut analysis);
     if let Some(path) = schema_json {
-        load_schema_json(path, &mut analysis)?;
+        load_schema_json(path, config, &mut analysis)?;
     } else {
         parse_migrations(config, &mut analysis);
     }
